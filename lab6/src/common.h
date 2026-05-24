@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 
 #define BUFFER_SIZE 1024
-#define PORT 8080
+#define DEFAULT_PORT 8080
 
 // Структура для передачи задания серверу
 typedef struct {
@@ -21,8 +21,8 @@ typedef struct {
 
 // Структура для получения результата от сервера
 typedef struct {
-    long long result;  // результат вычислений
-    int status;        // статус (0 - успех, -1 - ошибка)
+    long long result;  // результат вычислений (произведение по модулю)
+    int status;        // 0 - успех, -1 - ошибка
 } Response;
 
 #endif
