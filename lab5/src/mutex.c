@@ -1,92 +1,91 @@
-/********************************************************
- * An example source module to accompany...
- *
- * "Using POSIX Threads: Programming with Pthreads"
- *     by Brad nichols, Dick Buttlar, Jackie Farrell
- *     O'Reilly & Associates, Inc.
- *  Modified by A.Kostin
- ********************************************************
- * mutex.c
- *
- * Simple multi-threaded example with a mutex lock.
- */
-#include <errno.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
+#include <unistd.h>
 
-void do_one_thing(int *);
-void do_another_thing(int *);
-void do_wrap_up(int);
-int common = 0; /* A shared variable for two threads */
-int r1 = 0, r2 = 0, r3 = 0;
-pthread_mutex_t mut = PTHREAD_MUTEX_INITIALIZER;
+// Глобальная переменная (разделяемый ресурс)
+int counter = 0;
 
-int main() {
-  pthread_t thread1, thread2;
+// Мьютекс для защиты критической секции
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-  if (pthread_create(&thread1, NULL, (void *)do_one_thing,
-			  (void *)&common) != 0) {
-    perror("pthread_create");
-    exit(1);
-  }
+// Флаг: использовать мьютекс или нет (по умолчанию 0 - не использовать)
+int use_mutex = 0;
 
-  if (pthread_create(&thread2, NULL, (void *)do_another_thing,
-                     (void *)&common) != 0) {
-    perror("pthread_create");
-    exit(1);
-  }
-
-  if (pthread_join(thread1, NULL) != 0) {
-    perror("pthread_join");
-    exit(1);
-  }
-
-  if (pthread_join(thread2, NULL) != 0) {
-    perror("pthread_join");
-    exit(1);
-  }
-
-  do_wrap_up(common);
-
-  return 0;
+// Функция, которую выполняют потоки
+void* increment_counter(void* arg) {
+    int thread_id = *(int*)arg;
+    int iterations = 1000000;  // 1 миллион итераций на поток
+    
+    for (int i = 0; i < iterations; i++) {
+        if (use_mutex) {
+            pthread_mutex_lock(&mutex);   // НАЧАЛО критической секции
+        }
+        
+        // КРИТИЧЕСКАЯ СЕКЦИЯ (доступ к общему ресурсу)
+        counter++;  // counter = counter + 1
+        
+        if (use_mutex) {
+            pthread_mutex_unlock(&mutex); // КОНЕЦ критической секции
+        }
+    }
+    
+    printf("Thread %d finished\n", thread_id);
+    return NULL;
 }
 
-void do_one_thing(int *pnum_times) {
-  int i, j, x;
-  unsigned long k;
-  int work;
-  for (i = 0; i < 50; i++) {
-    // pthread_mutex_lock(&mut);
-    printf("doing one thing\n");
-    work = *pnum_times;
-    printf("counter = %d\n", work);
-    work++; /* increment, but not write */
-    for (k = 0; k < 500000; k++)
-      ;                 /* long cycle */
-    *pnum_times = work; /* write back */
-	// pthread_mutex_unlock(&mut);
-  }
-}
-
-void do_another_thing(int *pnum_times) {
-  int i, j, x;
-  unsigned long k;
-  int work;
-  for (i = 0; i < 50; i++) {
-    // pthread_mutex_lock(&mut);
-    printf("doing another thing\n");
-    work = *pnum_times;
-    printf("counter = %d\n", work);
-    work++; /* increment, but not write */
-    for (k = 0; k < 500000; k++)
-      ;                 /* long cycle */
-    *pnum_times = work; /* write back */
-    // pthread_mutex_unlock(&mut);
-  }
-}
-
-void do_wrap_up(int counter) {
-  int total;
-  printf("All done, counter = %d\n", counter);
+int main(int argc, char *argv[]) {
+    int num_threads = 4;
+    
+    // Проверяем аргумент командной строки для мьютекса
+    if (argc > 1) {
+        if (atoi(argv[1]) == 1) {
+            use_mutex = 1;
+            printf("Mutex: ON\n");
+        } else {
+            printf("Mutex: OFF\n");
+        }
+    } else {
+        printf("Usage: %s <0|1> (0 - no mutex, 1 - with mutex)\n", argv[0]);
+        printf("Example: %s 0  (race condition)\n", argv[0]);
+        printf("         %s 1  (correct synchronization)\n\n", argv[0]);
+    }
+    
+    printf("Starting %d threads, each doing 1,000,000 increments\n", num_threads);
+    printf("Expected final counter: %d\n\n", num_threads * 1000000);
+    
+    // Массив для хранения ID потоков
+    pthread_t threads[num_threads];
+    int thread_ids[num_threads];
+    
+    // Создаем потоки
+    for (int i = 0; i < num_threads; i++) {
+        thread_ids[i] = i;
+        if (pthread_create(&threads[i], NULL, increment_counter, &thread_ids[i]) != 0) {
+            perror("pthread_create failed");
+            return 1;
+        }
+    }
+    
+    // Ждем завершения всех потоков
+    for (int i = 0; i < num_threads; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    
+    printf("\n========================================\n");
+    printf("Final counter value: %d\n", counter);
+    printf("Expected value: %d\n", num_threads * 1000000);
+    
+    if (counter == num_threads * 1000000) {
+        printf("✓ CORRECT! No race condition.\n");
+    } else {
+        printf("✗ RACE CONDITION! Lost %d increments.\n", 
+               num_threads * 1000000 - counter);
+    }
+    printf("========================================\n");
+    
+    // Уничтожаем мьютекс (хотя в данном случае необязательно)
+    pthread_mutex_destroy(&mutex);
+    
+    return 0;
 }

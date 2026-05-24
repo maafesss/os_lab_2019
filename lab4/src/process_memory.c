@@ -1,53 +1,82 @@
-
-/* Program to display address information about the process */
-/* Adapted from Gray, J., program 1.4 */
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
 #include <unistd.h>
 
-/* Below is a macro definition */
-#define SHW_ADR(ID, I) (printf("ID %s \t is at virtual address: %8X\n", ID, &I))
+// Глобальные переменные
+int global_initialized = 10;      // инициализированная глобальная (data segment)
+int global_uninitialized;          // неинициализированная глобальная (bss segment)
+const int const_global = 100;      // константная глобальная (rodata)
 
-extern int etext, edata, end; /* Global variables for process
-                                 memory */
+// Функция для демонстрации
+void test_function() {
+    int local = 42;                 // локальная переменная (stack)
+    static int static_var = 5;      // статическая переменная (data segment)
+    static int static_uninit;        // статическая неинициализированная (bss segment)
+    
+    printf("  Inside function:\n");
+    printf("    local (stack): %p\n", (void*)&local);
+    printf("    static_var (data): %p\n", (void*)&static_var);
+    printf("    static_uninit (bss): %p\n", (void*)&static_uninit);
+}
 
-char *cptr = "This message is output by the function showit()\n"; /* Static */
-char buffer1[25];
-int showit(); /* Function prototype */
+// Внешние переменные, определенные линковщиком
+extern char etext, edata, end;
 
-main() {
-  int i = 0; /* Automatic variable */
-
-  /* Printing addressing information */
-  printf("\nAddress etext: %8X \n", &etext);
-  printf("Address edata: %8X \n", &edata);
-  printf("Address end  : %8X \n", &end);
-
-  SHW_ADR("main", main);
-  SHW_ADR("showit", showit);
-  SHW_ADR("cptr", cptr);
-  SHW_ADR("buffer1", buffer1);
-  SHW_ADR("i", i);
-  strcpy(buffer1, "A demonstration\n");   /* Library function */
-  write(1, buffer1, strlen(buffer1) + 1); /* System call */
-  showit(cptr);
-
-} /* end of main function */
-
-/* A function follows */
-int showit(p) char *p;
-{
-  char *buffer2;
-  SHW_ADR("buffer2", buffer2);
-  if ((buffer2 = (char *)malloc((unsigned)(strlen(p) + 1))) != NULL) {
-    printf("Alocated memory at %X\n", buffer2);
-    strcpy(buffer2, p);    /* copy the string */
-    printf("%s", buffer2); /* Didplay the string */
-    free(buffer2);         /* Release location */
-  } else {
-    printf("Allocation error\n");
-    exit(1);
-  }
+int main(int argc, char *argv[]) {
+    int local_stack = 123;          // локальная переменная (stack)
+    int *heap_var = malloc(sizeof(int));  // динамическая память (heap)
+    
+    printf("========================================\n");
+    printf("Process Memory Layout Demonstration\n");
+    printf("========================================\n\n");
+    
+    // Сегмент TEXT (код программы)
+    printf("--- TEXT SEGMENT (code) ---\n");
+    printf("  main function: %p\n", (void*)main);
+    printf("  test_function: %p\n", (void*)test_function);
+    printf("  etext (end of text segment): %p\n\n", (void*)&etext);
+    
+    // Сегмент DATA (инициализированные данные)
+    printf("--- DATA SEGMENT (initialized data) ---\n");
+    printf("  global_initialized: %p\n", (void*)&global_initialized);
+    printf("  edata (end of data segment): %p\n\n", (void*)&edata);
+    
+    // Сегмент BSS (неинициализированные данные)
+    printf("--- BSS SEGMENT (uninitialized data) ---\n");
+    printf("  global_uninitialized: %p\n", (void*)&global_uninitialized);
+    printf("  end (end of bss segment): %p\n\n", (void*)&end);
+    
+    // Константные данные
+    printf("--- RODATA SEGMENT (read-only data) ---\n");
+    printf("  const_global: %p\n\n", (void*)&const_global);
+    
+    // HEAP (куча)
+    printf("--- HEAP SEGMENT (dynamic memory) ---\n");
+    printf("  heap_var: %p\n", (void*)heap_var);
+    printf("  sbrk(0): %p\n\n", (void*)sbrk(0));
+    
+    // STACK (стек)
+    printf("--- STACK SEGMENT ---\n");
+    printf("  local_stack: %p\n", (void*)&local_stack);
+    printf("  argc: %p\n", (void*)&argc);
+    printf("  argv: %p\n\n", (void*)&argv);
+    
+    // Вызов функции для показа стековых адресов
+    printf("--- FUNCTION CALL STACK ---\n");
+    test_function();
+    
+    printf("\n========================================\n");
+    printf("Memory Layout (typical x86_64 Linux):\n");
+    printf("========================================\n");
+    printf("HIGH ADDRESS\n");
+    printf("| Stack     | <- grows downward\n");
+    printf("| ...       |\n");
+    printf("| Heap      | <- grows upward\n");
+    printf("| BSS       | (uninitialized data)\n");
+    printf("| Data      | (initialized data)\n");
+    printf("| Text      | (code)\n");
+    printf("LOW ADDRESS\n");
+    
+    free(heap_var);
+    return 0;
 }

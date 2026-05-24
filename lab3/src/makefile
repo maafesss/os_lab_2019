@@ -7,7 +7,7 @@ sequential_min_max: find_min_max.o sequential_min_max.o utils.o
 	gcc find_min_max.o sequential_min_max.o utils.o -o sequential_min_max -lm
 
 parallel_min_max: find_min_max.o parallel_min_max.o utils.o
-	gcc find_min_max.o parallel_min_max.o utils.o -o parallel_min_max -lm -lpthread
+	gcc find_min_max.o parallel_min_max.o utils.o -o parallel_min_max -lm
 
 find_min_max.o: find_min_max.c find_min_max.h
 	gcc -c find_min_max.c -o find_min_max.o

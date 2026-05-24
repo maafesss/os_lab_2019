@@ -1,0 +1,64 @@
+CC = gcc
+CFLAGS = -Wall -Wextra -pthread
+LDFLAGS = -pthread
+
+# Программы
+PROGRAMS = psum process_memory zombie_demo zombie_forever
+
+# Библиотеки
+LIB_OBJS = parallel_sum.o utils.o
+
+all: $(PROGRAMS)
+
+# Основная программа (задание 5)
+psum: psum.o $(LIB_OBJS)
+	$(CC) $(CFLAGS) psum.o $(LIB_OBJS) -o psum $(LDFLAGS)
+
+# process_memory (задание 1)
+psum: psum.c parallel_sum.c utils.c
+	$(CC) $(CFLAGS) -pthread psum.c parallel_sum.c utils.c -o psum
+
+# zombie_demo (задание 3)
+zombie_demo: zombie_demo.c
+	$(CC) $(CFLAGS) zombie_demo.c -o zombie_demo
+
+# zombie_forever (задание 3)
+zombie_forever: zombie_forever.c
+	$(CC) $(CFLAGS) zombie_forever.c -o zombie_forever
+
+# Объектные файлы
+psum.o: psum.c parallel_sum.h utils.h
+	$(CC) $(CFLAGS) -c psum.c -o psum.o
+
+parallel_sum.o: parallel_sum.c parallel_sum.h
+	$(CC) $(CFLAGS) -c parallel_sum.c -o parallel_sum.o
+
+utils.o: utils.c utils.h
+	$(CC) $(CFLAGS) -c utils.c -o utils.o
+
+# Очистка
+clean:
+	rm -f $(PROGRAMS) *.o
+
+# Пересборка
+rebuild: clean all
+
+# Запуск psum с параметрами по умолчанию
+run: psum
+	./psum --threads_num 4 --seed 123 --array_size 1000000
+
+# Запуск с разным количеством потоков
+test: psum
+	@echo "=== 1 thread ==="
+	./psum --threads_num 1 --seed 123 --array_size 1000000
+	@echo ""
+	@echo "=== 2 threads ==="
+	./psum --threads_num 2 --seed 123 --array_size 1000000
+	@echo ""
+	@echo "=== 4 threads ==="
+	./psum --threads_num 4 --seed 123 --array_size 1000000
+	@echo ""
+	@echo "=== 8 threads ==="
+	./psum --threads_num 8 --seed 123 --array_size 1000000
+
+.PHONY: all clean rebuild run test

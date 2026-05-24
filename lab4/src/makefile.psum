@@ -1,0 +1,88 @@
+# Компилятор и флаги
+CC = gcc
+CFLAGS = -Wall -Wextra -pthread
+LDFLAGS = -pthread
+
+# Список всех программ
+PROGRAMS = psum process_memory zombie_demo zombie_forever
+
+# Объектные файлы для psum
+PSUM_OBJS = psum.o parallel_sum.o utils.o
+
+# Цель по умолчанию
+all: $(PROGRAMS)
+
+# ============ ЗАДАНИЕ 5: Параллельная сумма ============
+psum: $(PSUM_OBJS)
+	$(CC) $(CFLAGS) $(PSUM_OBJS) -o psum $(LDFLAGS)
+
+psum.o: psum.c parallel_sum.h utils.h
+	$(CC) $(CFLAGS) -c psum.c -o psum.o
+
+parallel_sum.o: parallel_sum.c parallel_sum.h
+	$(CC) $(CFLAGS) -c parallel_sum.c -o parallel_sum.o
+
+utils.o: utils.c utils.h
+	$(CC) $(CFLAGS) -c utils.c -o utils.o
+
+# ============ ЗАДАНИЕ 1: Виртуальная память ============
+process_memory: process_memory.c
+	$(CC) $(CFLAGS) process_memory.c -o process_memory
+
+# ============ ЗАДАНИЕ 3: Зомби процессы ============
+zombie_demo: zombie_demo.c
+	$(CC) $(CFLAGS) zombie_demo.c -o zombie_demo
+
+zombie_forever: zombie_forever.c
+	$(CC) $(CFLAGS) zombie_forever.c -o zombie_forever
+
+# ============ Очистка ============
+clean:
+	rm -f $(PROGRAMS) *.o
+
+# ============ Пересборка ============
+rebuild: clean all
+
+# ============ Запуск с разными параметрами ============
+run: psum
+	./psum --threads_num 4 --seed 123 --array_size 1000000
+
+run1: psum
+	./psum --threads_num 1 --seed 123 --array_size 1000000
+
+run2: psum
+	./psum --threads_num 2 --seed 123 --array_size 1000000
+
+run4: psum
+	./psum --threads_num 4 --seed 123 --array_size 1000000
+
+run8: psum
+	./psum --threads_num 8 --seed 123 --array_size 1000000
+
+# ============ Тестирование всех потоков ============
+test: psum
+	@echo "=== 1 поток ==="
+	./psum --threads_num 1 --seed 42 --array_size 10000000
+	@echo ""
+	@echo "=== 2 потока ==="
+	./psum --threads_num 2 --seed 42 --array_size 10000000
+	@echo ""
+	@echo "=== 4 потока ==="
+	./psum --threads_num 4 --seed 42 --array_size 10000000
+	@echo ""
+	@echo "=== 8 потоков ==="
+	./psum --threads_num 8 --seed 42 --array_size 10000000
+
+# ============ Помощь ============
+help:
+	@echo "Доступные команды:"
+	@echo "  make              - собрать все программы"
+	@echo "  make psum         - собрать только программу параллельной суммы"
+	@echo "  make run          - запустить psum с 4 потоками"
+	@echo "  make run1/run2/run4/run8 - запустить с 1/2/4/8 потоками"
+	@echo "  make test         - запустить тесты с разным числом потоков"
+	@echo "  make clean        - удалить все собранные файлы"
+	@echo "  make rebuild      - пересобрать всё с нуля"
+
+# Объявляем цели, которые не являются файлами
+.PHONY: all clean rebuild run run1 run2 run4 run8 test help
