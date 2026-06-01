@@ -3,131 +3,97 @@
 #include <pthread.h>
 #include <unistd.h>
 
-// Два мьютекса (ресурса)
-pthread_mutex_t mutex_a = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_b = PTHREAD_MUTEX_INITIALIZER;
+// Два мьютекса для создания deadlock
+pthread_mutex_t mutexA = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutexB = PTHREAD_MUTEX_INITIALIZER;
 
-// Флаг для предотвращения deadlock (для версии без deadlock)
-int avoid_deadlock = 0;
+// Счётчики для наглядности
+int counterA = 0;
+int counterB = 0;
 
-// Поток 1: захватывает mutex A, потом mutex B
+// Функция для потока 1
+// Захватывает mutexA, затем mutexB
 void* thread1_func(void* arg) {
-    if (avoid_deadlock) {
-        // Версия без deadlock - одинаковый порядок захвата
-        printf("Thread 1: trying to lock mutex A...\n");
-        pthread_mutex_lock(&mutex_a);
-        printf("Thread 1: locked mutex A\n");
-        sleep(1);
-        
-        printf("Thread 1: trying to lock mutex B...\n");
-        pthread_mutex_lock(&mutex_b);
-        printf("Thread 1: locked mutex B\n");
-    } else {
-        // Версия с deadlock - обратный порядок захвата
-        printf("Thread 1: trying to lock mutex A...\n");
-        pthread_mutex_lock(&mutex_a);
-        printf("Thread 1: locked mutex A\n");
-        sleep(1);
-        
-        printf("Thread 1: trying to lock mutex B...\n");
-        pthread_mutex_lock(&mutex_b);
-        printf("Thread 1: locked mutex B\n");
-    }
+    printf("Поток 1: пытаюсь захватить mutexA\n");
+    pthread_mutex_lock(&mutexA);
+    printf("Поток 1: захватил mutexA\n");
+    
+    // Небольшая задержка, чтобы увеличить шанс deadlock
+    usleep(1000);
+    
+    printf("Поток 1: пытаюсь захватить mutexB\n");
+    pthread_mutex_lock(&mutexB);
+    printf("Поток 1: захватил mutexB\n");
     
     // Критическая секция
-    printf("Thread 1: working in critical section...\n");
-    sleep(1);
+    counterA++;
+    counterB++;
+    printf("Поток 1: выполнил работу (counterA=%d, counterB=%d)\n", counterA, counterB);
     
-    // Освобождаем ресурсы
-    pthread_mutex_unlock(&mutex_b);
-    printf("Thread 1: unlocked mutex B\n");
-    pthread_mutex_unlock(&mutex_a);
-    printf("Thread 1: unlocked mutex A\n");
+    // Освобождаем в обратном порядке
+    pthread_mutex_unlock(&mutexB);
+    pthread_mutex_unlock(&mutexA);
     
+    printf("Поток 1: завершил работу\n");
     return NULL;
 }
 
-// Поток 2: захватывает mutex B, потом mutex A
+// Функция для потока 2
+// Захватывает mutexB, затем mutexA (обратный порядок!)
 void* thread2_func(void* arg) {
-    if (avoid_deadlock) {
-        // Версия без deadlock - ТАКОЙ ЖЕ порядок захвата (сначала A, потом B)
-        printf("Thread 2: trying to lock mutex A...\n");
-        pthread_mutex_lock(&mutex_a);
-        printf("Thread 2: locked mutex A\n");
-        sleep(1);
-        
-        printf("Thread 2: trying to lock mutex B...\n");
-        pthread_mutex_lock(&mutex_b);
-        printf("Thread 2: locked mutex B\n");
-    } else {
-        // Версия с deadlock - обратный порядок захвата (сначала B, потом A)
-        printf("Thread 2: trying to lock mutex B...\n");
-        pthread_mutex_lock(&mutex_b);
-        printf("Thread 2: locked mutex B\n");
-        sleep(1);
-        
-        printf("Thread 2: trying to lock mutex A...\n");
-        pthread_mutex_lock(&mutex_a);
-        printf("Thread 2: locked mutex A\n");
-    }
+    printf("Поток 2: пытаюсь захватить mutexB\n");
+    pthread_mutex_lock(&mutexB);
+    printf("Поток 2: захватил mutexB\n");
+    
+    // Небольшая задержка, чтобы увеличить шанс deadlock
+    usleep(1000);
+    
+    printf("Поток 2: пытаюсь захватить mutexA\n");
+    pthread_mutex_lock(&mutexA);
+    printf("Поток 2: захватил mutexA\n");
     
     // Критическая секция
-    printf("Thread 2: working in critical section...\n");
-    sleep(1);
+    counterA++;
+    counterB++;
+    printf("Поток 2: выполнил работу (counterA=%d, counterB=%d)\n", counterA, counterB);
     
-    // Освобождаем ресурсы
-    pthread_mutex_unlock(&mutex_a);
-    printf("Thread 2: unlocked mutex A\n");
-    pthread_mutex_unlock(&mutex_b);
-    printf("Thread 2: unlocked mutex B\n");
+    // Освобождаем в обратном порядке
+    pthread_mutex_unlock(&mutexA);
+    pthread_mutex_unlock(&mutexB);
     
+    printf("Поток 2: завершил работу\n");
     return NULL;
 }
 
 int main(int argc, char* argv[]) {
     pthread_t thread1, thread2;
     
-    // Проверяем аргумент командной строки
-    if (argc > 1 && atoi(argv[1]) == 1) {
-        avoid_deadlock = 1;
-        printf("========================================\n");
-        printf("DEADLOCK AVOIDANCE MODE\n");
-        printf("========================================\n");
-        printf("Threads will lock mutexes in SAME order\n\n");
-    } else {
-        printf("========================================\n");
-        printf("DEADLOCK DEMONSTRATION MODE\n");
-        printf("========================================\n");
-        printf("Threads will lock mutexes in REVERSE order\n");
-        printf("This WILL cause a deadlock!\n");
-        printf("========================================\n\n");
-        printf("To avoid deadlock, run: %s 1\n\n", argv[0]);
-    }
+    printf("=== Демонстрация deadlock ===\n");
+    printf("Поток 1 захватывает mutexA -> mutexB\n");
+    printf("Поток 2 захватывает mutexB -> mutexA\n");
+    printf("Если порядок захвата разный — возникает deadlock\n\n");
     
-    // Создаем потоки
+    // Создаём потоки
     if (pthread_create(&thread1, NULL, thread1_func, NULL) != 0) {
-        perror("pthread_create failed for thread1");
-        return 1;
+        perror("Ошибка создания потока 1");
+        exit(EXIT_FAILURE);
     }
     
     if (pthread_create(&thread2, NULL, thread2_func, NULL) != 0) {
-        perror("pthread_create failed for thread2");
-        return 1;
+        perror("Ошибка создания потока 2");
+        exit(EXIT_FAILURE);
     }
     
-    // Ждем завершения потоков (если они завершатся)
-    printf("Waiting for threads to finish...\n");
-    printf("(If deadlock occurs, press Ctrl+C to stop)\n\n");
+    // Ждём завершения потоков (при deadlock программа зависнет)
+    printf("Ожидание завершения потоков...\n");
+    printf("(если возник deadlock, программа зависнет навсегда)\n");
+    printf("Нажмите Ctrl+C для принудительного завершения\n\n");
     
     pthread_join(thread1, NULL);
     pthread_join(thread2, NULL);
     
-    printf("\n========================================\n");
-    printf("Both threads finished successfully!\n");
-    printf("========================================\n");
-    
-    pthread_mutex_destroy(&mutex_a);
-    pthread_mutex_destroy(&mutex_b);
+    printf("\nОба потока успешно завершились!\n");
+    printf("Deadlock не произошёл (редкий случай)\n");
     
     return 0;
 }

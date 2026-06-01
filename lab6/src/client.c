@@ -4,14 +4,14 @@
 #include <sys/time.h>
 
 typedef struct {
-    int server_id;
-    char *server_ip;
-    int server_port;
+    int id;
+    char *ip;
+    int port;
     int start;
     int end;
     int mod;
     long long result;
-    int status;
+    int success;
 } ServerTask;
 
 ServerTask *servers;
@@ -19,48 +19,37 @@ int server_count = 0;
 pthread_mutex_t print_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int read_servers(const char *filename) {
-    FILE *file = fopen(filename, "r");
-    if (!file) {
-        perror("fopen failed");
-        return -1;
-    }
+    FILE *f = fopen(filename, "r");
+    if (!f) return -1;
     
     char line[256];
     int count = 0;
+    while (fgets(line, sizeof(line), f)) count++;
+    rewind(f);
     
-    while (fgets(line, sizeof(line), file)) {
-        count++;
-    }
-    
-    rewind(file);
-    
-    servers = (ServerTask*)malloc(count * sizeof(ServerTask));
+    servers = malloc(count * sizeof(ServerTask));
     if (!servers) {
-        perror("malloc failed");
-        fclose(file);
+        fclose(f);
         return -1;
     }
     
     int i = 0;
-    while (fgets(line, sizeof(line), file)) {
+    while (fgets(line, sizeof(line), f)) {
         line[strcspn(line, "\n")] = 0;
         if (line[0] == '\0') continue;
         
         char *colon = strchr(line, ':');
-        if (!colon) {
-            printf("[CLIENT] Invalid server format: %s\n", line);
-            continue;
-        }
+        if (!colon) continue;
         
         *colon = '\0';
-        servers[i].server_ip = strdup(line);
-        servers[i].server_port = atoi(colon + 1);
-        servers[i].server_id = i;
-        servers[i].status = 0;
+        servers[i].ip = strdup(line);
+        servers[i].port = atoi(colon + 1);
+        servers[i].id = i;
+        servers[i].success = 0;
         i++;
     }
     
-    fclose(file);
+    fclose(f);
     return i;
 }
 
@@ -68,63 +57,35 @@ void* compute_on_server(void *arg) {
     ServerTask *task = (ServerTask*)arg;
     
     pthread_mutex_lock(&print_mutex);
-    printf("[CLIENT] Connecting to %s:%d for range [%d, %d]...\n",
-           task->server_ip, task->server_port, task->start, task->end);
+    printf("[CLIENT] Connecting to %s:%d for [%d, %d]\n",
+           task->ip, task->port, task->start, task->end);
     pthread_mutex_unlock(&print_mutex);
     
-    int sock = create_socket();
+    int sock = connect_to_server(task->ip, task->port);
     if (sock < 0) {
-        task->status = -1;
+        task->success = 0;
         return NULL;
     }
     
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(task->server_port);
-    
-    if (inet_pton(AF_INET, task->server_ip, &server_addr.sin_addr) <= 0) {
-        perror("inet_pton failed");
-        close(sock);
-        task->status = -1;
-        return NULL;
-    }
-    
-    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("connect failed");
-        close(sock);
-        task->status = -1;
-        return NULL;
-    }
-    
-    pthread_mutex_lock(&print_mutex);
-    printf("[CLIENT] Connected to %s:%d\n", task->server_ip, task->server_port);
-    pthread_mutex_unlock(&print_mutex);
-    
-    Task t;
-    t.start = task->start;
-    t.end = task->end;
-    t.mod = task->mod;
-    
+    Task t = {task->start, task->end, task->mod};
     if (send_task(sock, &t) < 0) {
         close(sock);
-        task->status = -1;
+        task->success = 0;
         return NULL;
     }
     
     Response resp;
     if (receive_response(sock, &resp) < 0) {
         close(sock);
-        task->status = -1;
+        task->success = 0;
         return NULL;
     }
     
     task->result = resp.result;
-    task->status = resp.status;
+    task->success = (resp.status == 0);
     
     pthread_mutex_lock(&print_mutex);
-    printf("[CLIENT] Result from %s:%d: %lld\n", 
-           task->server_ip, task->server_port, task->result);
+    printf("[CLIENT] Result from %s:%d: %lld\n", task->ip, task->port, task->result);
     pthread_mutex_unlock(&print_mutex);
     
     close(sock);
@@ -135,7 +96,7 @@ int main(int argc, char *argv[]) {
     int k = -1, mod = -1;
     char *servers_file = NULL;
     
-    static struct option options[] = {
+    static struct option opts[] = {
         {"k", required_argument, 0, 'k'},
         {"mod", required_argument, 0, 'm'},
         {"servers", required_argument, 0, 's'},
@@ -143,7 +104,7 @@ int main(int argc, char *argv[]) {
     };
     
     int opt;
-    while ((opt = getopt_long(argc, argv, "k:m:s:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "k:m:s:", opts, NULL)) != -1) {
         switch (opt) {
             case 'k': k = atoi(optarg); break;
             case 'm': mod = atoi(optarg); break;
@@ -151,14 +112,15 @@ int main(int argc, char *argv[]) {
         }
     }
     
-    if (k == -1 || mod == -1 || servers_file == NULL) {
+    if (k == -1 || mod == -1 || !servers_file) {
         printf("Usage: %s --k <num> --mod <num> --servers <file>\n", argv[0]);
+        printf("Example: %s --k 20 --mod 1000 --servers servers.txt\n", argv[0]);
         return 1;
     }
     
     server_count = read_servers(servers_file);
     if (server_count <= 0) {
-        printf("[CLIENT] No servers found\n");
+        printf("[CLIENT] No servers found in %s\n", servers_file);
         return 1;
     }
     
@@ -172,51 +134,54 @@ int main(int argc, char *argv[]) {
         return 0;
     }
     
+    // Корректируем количество серверов
     if (server_count > k) server_count = k;
     
-    int numbers_per_server = k / server_count;
-    int remainder = k % server_count;
-    int current_start = 1;
+    // Разбиваем диапазон
+    int per_server = k / server_count;
+    int rem = k % server_count;
+    int start = 1;
     
     for (int i = 0; i < server_count; i++) {
-        servers[i].start = current_start;
-        int extra = (i < remainder) ? 1 : 0;
-        servers[i].end = current_start + numbers_per_server + extra - 1;
+        servers[i].start = start;
+        int extra = (i < rem) ? 1 : 0;
+        servers[i].end = start + per_server + extra - 1;
         servers[i].mod = mod;
-        current_start = servers[i].end + 1;
+        start = servers[i].end + 1;
         printf("[CLIENT] Server %d: range [%d, %d]\n", i, servers[i].start, servers[i].end);
     }
     
-    struct timeval start_time, finish_time;
-    gettimeofday(&start_time, NULL);
+    struct timeval tv_start, tv_end;
+    gettimeofday(&tv_start, NULL);
     
-    pthread_t *threads = malloc(server_count * sizeof(pthread_t));
+    pthread_t threads[server_count];
     for (int i = 0; i < server_count; i++) {
         pthread_create(&threads[i], NULL, compute_on_server, &servers[i]);
     }
+    
+    long long total = 1;
+    int failed = 0;
     for (int i = 0; i < server_count; i++) {
         pthread_join(threads[i], NULL);
-    }
-    
-    gettimeofday(&finish_time, NULL);
-    
-    long long total_result = 1;
-    for (int i = 0; i < server_count; i++) {
-        if (servers[i].status == 0) {
-            total_result = (total_result * servers[i].result) % mod;
+        if (servers[i].success) {
+            total = (total * servers[i].result) % mod;
+        } else {
+            failed++;
         }
     }
     
-    double elapsed_time = (finish_time.tv_sec - start_time.tv_sec) * 1000.0;
-    elapsed_time += (finish_time.tv_usec - start_time.tv_usec) / 1000.0;
+    gettimeofday(&tv_end, NULL);
+    double elapsed = (tv_end.tv_sec - tv_start.tv_sec) * 1000.0;
+    elapsed += (tv_end.tv_usec - tv_start.tv_usec) / 1000.0;
     
     printf("\n========================================\n");
-    printf("RESULT: %d! mod %d = %lld\n", k, mod, total_result);
-    printf("Time: %.3f ms\n", elapsed_time);
+    printf("RESULT:\n");
+    printf("%d! mod %d = %lld\n", k, mod, total);
+    printf("Time: %.3f ms\n", elapsed);
+    if (failed > 0) printf("WARNING: %d servers failed\n", failed);
     printf("========================================\n");
     
-    free(threads);
-    for (int i = 0; i < server_count; i++) free(servers[i].server_ip);
+    for (int i = 0; i < server_count; i++) free(servers[i].ip);
     free(servers);
     pthread_mutex_destroy(&print_mutex);
     

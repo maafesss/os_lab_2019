@@ -1,47 +1,13 @@
 #include "libnetwork.h"
 
-void handle_client(int client_fd) {
-    Task task;
-    Response response;
-    
-    // Получаем задание от клиента
-    if (receive_task(client_fd, &task) <= 0) {
-        response.status = -1;
-        send_response(client_fd, &response);
-        close(client_fd);
-        return;
-    }
-    
-    printf("[SERVER] Received task: start=%d, end=%d, mod=%d\n", 
-           task.start, task.end, task.mod);
-    
-    // Вычисляем результат
-    response.result = compute_range(task.start, task.end, task.mod);
-    response.status = 0;
-    
-    printf("[SERVER] Computed result: %lld\n", response.result);
-    
-    // Отправляем результат клиенту
-    send_response(client_fd, &response);
-    
-    close(client_fd);
-    printf("[SERVER] Client disconnected\n\n");
-}
-
 int main(int argc, char *argv[]) {
     int port = DEFAULT_PORT;
-    
-    if (argc > 1) {
-        port = atoi(argv[1]);
-    }
+    if (argc > 1) port = atoi(argv[1]);
     
     int server_fd = setup_server_socket(port);
-    if (server_fd < 0) {
-        exit(1);
-    }
+    if (server_fd < 0) exit(1);
     
     printf("[SERVER] Started on port %d\n", port);
-    printf("[SERVER] Waiting for connections...\n\n");
     
     while (1) {
         struct sockaddr_in client_addr;
@@ -56,7 +22,20 @@ int main(int argc, char *argv[]) {
         printf("[SERVER] Client connected from %s:%d\n", 
                inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
         
-        handle_client(client_fd);
+        Task task;
+        if (receive_task(client_fd, &task) > 0) {
+            printf("[SERVER] Task: [%d, %d] mod %d\n", task.start, task.end, task.mod);
+            
+            Response resp;
+            resp.result = compute_range(task.start, task.end, task.mod);
+            resp.status = 0;
+            
+            send_response(client_fd, &resp);
+            printf("[SERVER] Result: %lld sent\n", resp.result);
+        }
+        
+        close(client_fd);
+        printf("[SERVER] Client disconnected\n");
     }
     
     close(server_fd);

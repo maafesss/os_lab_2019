@@ -1,3 +1,6 @@
+parallel_factorial: parallel_factorial.c
+	gcc -pthread parallel_factorial.c -o parallel_factorial
+
 # Компилятор и флаги
 CC = gcc
 CFLAGS = -Wall -Wextra -g
